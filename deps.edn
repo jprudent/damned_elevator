@@ -1,3 +1,11 @@
-{:deps    {org.clojure/clojurescript {:mvn/version "1.10.439"}}
- :aliases {:test {:extra-paths ["test"]
-                  :extra-deps {org.clojure/test.check {:mvn/version "0.9.0"}}}}}
+{:deps    {org.clojure/test.check {:mvn/version "0.9.0"}}
+ :aliases {:cljs        {:extra-deps {org.clojure/clojurescript {:mvn/version "1.10.439"}}}
+           :clj         {:extra-deps {org.clojure/clojure {:mvn/version "1.9.0"}}}
+           :dev-browser {:main-opts ["--main" "cljs.main"
+                                     "--compile" "damel.kobaian"
+                                     "-re" "browser"
+                                     "--repl"]}
+           :dev-node    {:main-opts ["--main" "cljs.main"
+                                     "-re" "node"
+                                     "--repl"]}
+           :dev-jvm     {}}}
