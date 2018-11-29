@@ -35,3 +35,9 @@ nil
 user=> (damel.kobaian/make-sentence)
 "tai némaikōhō kaniyi kamōyō ?"
 ```
+
+### Unit Tests on JVM
+
+```
+clj -Atest-clj -R:clj
+```
