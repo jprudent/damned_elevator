@@ -27,12 +27,8 @@
       (prn floor)
       (-> (.. game -add)
           (.graphics)
-          (.lineStyle height 0xFF00FF 1.0)
-          (.beginPath)
-          (.moveTo x y)
-          (.lineTo (+ x width) y)
-          (.closePath)
-          (.strokePath)))
+          (.fillStyle 0xFF00FF)
+          (.fillRect x y width height)))
 
     (let [{:keys [x y height]} level-text]
       (-> (.. game -add)
