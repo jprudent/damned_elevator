@@ -14,13 +14,12 @@
 
 (defn- line [])
 (defn make-level [game i]
-  (let [image (-> (.. game -add)
-                  (.image 0 0 "elevator")
-                  (.setOrigin 0 0))
+  (let [{:keys [floor elevator level-text]} (game-dimensions/level i)]
 
-        {:keys [floor elevator level-text]} (game-dimensions/level i)]
-
-    (let [{:keys [y]} elevator]
+    (let [{:keys [y]} elevator
+          image (-> (.. game -add)
+                    (.image 0 0 "elevator")
+                    (.setOrigin 0 0))]
       (set! (.-y image) y))
 
     (let [{:keys [x y height width]} floor]
