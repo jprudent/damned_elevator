@@ -1,14 +1,7 @@
-(ns damel.browser)
+(ns damel.browser
+  (:require [damel.game-dimensions :as game-dimensions]))
 
 (enable-console-print!)
-
-(def screen-height 600)
-(def screen-width 800)
-;(def floor-height 10)
-;(def nb-levels 10)
-;(def level-height 200)
-;(def world-height (* nb-levels level-height))
-;(def level-text-size 14)
 
 (defn preload [game]
   (println "preload")
@@ -19,51 +12,53 @@
       (.image "elevator" "elevator2.png")
       (.image "elevator" "elevator_cabin.png"))))
 
+(defn- line [])
 (defn make-level [game i]
-  (let [image           (-> (.. game -add)
-                            (.image 0 0 "elevator")
-                            (.setOrigin 0 0))
-        rectangle       (.getBounds image)
-        elevator-height (.-height rectangle)
-        floor-y         (- world-height (* i level-height))]
-    (set! (.-y image)
-          (- floor-y floor-height elevator-height))
+  (let [image (-> (.. game -add)
+                  (.image 0 0 "elevator")
+                  (.setOrigin 0 0))
 
-    (-> (.. game -add)
-        (.graphics)
-        (.lineStyle floor-height 0xFF00FF 1.0)
-        (.beginPath)
-        (.moveTo 0 (- floor-y floor-height))
-        (.lineTo 600 (- floor-y floor-height))
-        (.closePath)
-        (.strokePath))
+        {:keys [floor elevator level-text]} (game-dimensions/level i)]
 
-    (-> (.. game -add)
-        (.text 610 (- floor-y level-text-size) (str "Level " i " " floor-y) #js {:fontSize (str level-text-size "px") :fill "#0F0"}))))
+    (let [{:keys [y]} elevator]
+      (set! (.-y image) y))
+
+    (let [{:keys [x y height width]} floor]
+      (prn floor)
+      (-> (.. game -add)
+          (.graphics)
+          (.lineStyle height 0xFF00FF 1.0)
+          (.beginPath)
+          (.moveTo x y)
+          (.lineTo (+ x width) y)
+          (.closePath)
+          (.strokePath)))
+
+    (let [{:keys [x y height]} level-text]
+      (-> (.. game -add)
+          (.text x y (str "Level " i)
+                 #js {:fontSize (str height "px") :fill "#0F0"})))))
 
 (defn create [game]
   (println "create" (js/Object.keys game))
-  (let [elevator_    (->
-                       (.. game -add)
-                       (.image game-obj-factory 0 0 "elevator")
-                       (.setOrigin 0 0))
-
-
-        _            (dotimes [level-number nb-levels]
+  (let [_            (dotimes [level-number game-dimensions/nb-levels]
                        (make-level game level-number))
-        main-camera_ (doto
-                       (.. game -cameras -main)
-                       (.setBounds 0, 0, 700, world-height)
-                       (.setZoom 1)
-                       (.setName "main"))
-        mini-camera_ (->
-                       (.. game -cameras)
-                       (.add 700 0 100 600)
-                       (.setBackgroundColor 0xFF0000)
-                       (.setBounds 0, 0, 700, (* 600 3))
-                       (.setZoom (/ 1 6.0))
-                       (.setName "mini")
-                       (.setScroll 0 0))]
+
+        main-camera_ (let [{:keys [bounds zoom]} game-dimensions/main-camera]
+                       (->
+                         (.. game -cameras -main)
+                         (.setBounds (:x bounds) (:y bounds) (:width bounds) (:height bounds))
+                         (.setZoom zoom)
+                         (.setName "main")))
+        mini-camera_ (let [{:keys [position bounds zoom]} game-dimensions/mini-camera]
+                       (->
+                         (.. game -cameras)
+                         (.add (:x position) (:y position) (:width position) (:height position))
+                         (.setBackgroundColor 0xFF0000)
+                         (.setBounds (:x bounds) (:y bounds) (:width bounds) (:heigh bounds))
+                         (.setZoom zoom)
+                         (.setName "mini")
+                         (.setScroll 0 0)))]
 
     #_(position elevator_)))
 
@@ -76,8 +71,8 @@
 (def config
   (clj->js
     {:type    js/Phaser.AUTO
-     :width   screen-width
-     :height  screen-height
+     :width   game-dimensions/screen-width
+     :height  game-dimensions/screen-height
      :physics {:default "arcade"
                :arcade  {:gravity {:y 200}}}
      :scene   {:preload #(this-as game (preload game))
