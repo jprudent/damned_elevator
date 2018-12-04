@@ -10,17 +10,17 @@
     (set! (.-crossOrigin loader) "anonymous")
     (doto loader
       (.image "elevator" "elevator2.png")
-      (.image "elevator" "elevator_cabin.png"))))
+      (.image "cabin" "elevator_cabin.png"))))
 
 (defn- line [])
 (defn make-level [game i]
   (let [{:keys [floor elevator level-text]} (game-dimensions/level i)]
 
-    (let [{:keys [y]} elevator
-          image (-> (.. game -add)
-                    (.image 0 0 "elevator")
-                    (.setOrigin 0 0))]
-      (set! (.-y image) y))
+    (let [{:keys [x y]} elevator]
+      (-> (.. game -add)
+          (.image 0 0 "elevator")
+          (.setOrigin 0 0)
+          (.setPosition x y)))
 
     (let [{:keys [x y height width]} floor]
       (prn floor)
@@ -34,10 +34,19 @@
           (.text x y (str "Level " i)
                  #js {:fontSize (str height "px") :fill "#0F0"})))))
 
+(defn init-cabin [game]
+  (let [{:keys [x y]} game-dimensions/cabin]
+    (-> (.. game -add)
+        (.image 0 0 "cabin")
+        (.setOrigin 0 0)
+        (.setPosition x y))))
+
 (defn create [game]
   (println "create" (js/Object.keys game))
   (let [_            (dotimes [level-number game-dimensions/nb-levels]
                        (make-level game level-number))
+
+        cabin        (init-cabin game)
 
         main-camera_ (let [{:keys [bounds zoom]} game-dimensions/main-camera]
                        (->

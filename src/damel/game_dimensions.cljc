@@ -10,7 +10,10 @@
 (def level-text-width 100)
 
 (def elevator-height 166)
-(def elevator-width 225)
+(def elevator-width 192)
+
+(def cabin-width 236)
+(def cabin-height 158)
 
 (def nb-levels 4)
 
@@ -18,7 +21,6 @@
 
 (def world-height (* nb-levels level-height))
 (def world-width 700)
-
 
 (defn level
   "return dimension and positions of things at given level assuming right-left
@@ -32,7 +34,7 @@
                   :y      floor-y
                   :width  floor-width
                   :height floor-height}
-     :elevator   {:x      0
+     :elevator   {:x      (/ (- cabin-width elevator-width) 2)
                   :y      (- floor-y elevator-height)
                   :width  elevator-width
                   :height elevator-height}
@@ -40,6 +42,12 @@
                   :y      (- floor-y-min level-text-height)
                   :width  level-text-width
                   :height level-text-height}}))
+
+(def cabin
+  {:x      0
+   :y      (- world-height floor-height cabin-height)
+   :width  cabin-width
+   :height cabin-height})
 
 (def main-camera
   {:position {:x 0 :y 0 :width world-width :height screen-height}
