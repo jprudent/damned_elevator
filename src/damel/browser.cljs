@@ -1,5 +1,6 @@
 (ns damel.browser
-  (:require [damel.game-dimensions :as game-dimensions]))
+  (:require [damel.game-dimensions :as game-dimensions]
+            [damel.elevator-cabin :as elevator-cabin]))
 
 (enable-console-print!)
 
@@ -12,7 +13,12 @@
       (.image "elevator" "elevator2.png")
       (.image "cabin" "elevator_cabin.png"))))
 
-(defn- line [])
+(defn- text-at
+  [game x y height text]
+  (-> (.. game -add)
+      (.text x y text
+             #js {:fontSize (str height "px") :fill "#0F0"})))
+
 (defn make-level [game i]
   (let [{:keys [floor elevator level-text]} (game-dimensions/level i)]
 
@@ -23,54 +29,109 @@
           (.setPosition x y)))
 
     (let [{:keys [x y height width]} floor]
-      (prn floor)
       (-> (.. game -add)
           (.graphics)
           (.fillStyle 0xFF00FF)
           (.fillRect x y width height)))
 
     (let [{:keys [x y height]} level-text]
-      (-> (.. game -add)
-          (.text x y (str "Level " i)
-                 #js {:fontSize (str height "px") :fill "#0F0"})))))
+      (text-at game x y height (str "Level " i)))))
+
+(def state (atom {:ticks              0
+                  :cabin              elevator-cabin/cabin-0
+                  :objects            {}
+                  :cabin-current-move nil}))
+
+(defn emit-cabin-command!
+  [command]
+  (swap! state update :cabin #(elevator-cabin/add-command % command)))
 
 (defn init-cabin [game]
-  (let [{:keys [x y]} game-dimensions/cabin]
-    (-> (.. game -add)
-        (.image 0 0 "cabin")
-        (.setOrigin 0 0)
-        (.setPosition x y))))
+  (let [{:keys [x y]} game-dimensions/cabin
+        {:keys [mass]} elevator-cabin/cabin-0
+        cabin (-> (.. game -physics -add)
+                  (.image 0 0 "cabin")
+                  (.setName "cabin")
+                  (.setOrigin 0 0)
+                  (.setPosition x y))]
+    (-> (.. cabin -body)
+        (.setMass mass)
+        (.setVelocity 0 0))
+    (swap! state assoc-in [:objects :cabin] cabin)))
 
 (defn create [game]
   (println "create" (js/Object.keys game))
-  (let [_            (dotimes [level-number game-dimensions/nb-levels]
-                       (make-level game level-number))
 
-        cabin        (init-cabin game)
+  (dotimes [level-number game-dimensions/nb-levels]
+    (make-level game level-number))
 
-        main-camera_ (let [{:keys [bounds zoom]} game-dimensions/main-camera]
-                       (->
-                         (.. game -cameras -main)
-                         (.setBounds (:x bounds) (:y bounds) (:width bounds) (:height bounds))
-                         (.setZoom zoom)
-                         (.setName "main")))
-        mini-camera_ (let [{:keys [position bounds zoom]} game-dimensions/mini-camera]
-                       (->
-                         (.. game -cameras)
-                         (.add (:x position) (:y position) (:width position) (:height position))
-                         (.setBackgroundColor 0xFF0000)
-                         (.setBounds (:x bounds) (:y bounds) (:width bounds) (:heigh bounds))
-                         (.setZoom zoom)
-                         (.setName "mini")
-                         (.setScroll 0 0)))]
+  (init-cabin game)
 
-    #_(position elevator_)))
+  (let [{:keys [bounds zoom]} game-dimensions/main-camera]
+    (->
+      (.. game -cameras -main)
+      (.setBounds (:x bounds) (:y bounds) (:width bounds) (:height bounds))
+      (.setZoom zoom)
+      (.setName "main")))
 
-(def i (atom 0))
+  (let [{:keys [position bounds zoom]} game-dimensions/mini-camera]
+    (->
+      (.. game -cameras)
+      (.add (:x position) (:y position) (:width position) (:height position))
+      (.setBackgroundColor 0x222222)
+      (.setBounds (:x bounds) (:y bounds) (:width bounds) (:heigh bounds))
+      (.setZoom zoom)
+      (.setName "mini")
+      (.setScroll 0 0))))
+
+(defn cabin-current-y [game]
+  (.. (get-in @state [:objects :cabin]) -y))
+
+(defn go-to-level
+  [game level]
+  (let [cabin   (get-in @state [:objects :cabin])
+        physics (.. game -physics)
+        {:keys [x y]} (game-dimensions/cabin-at-level level)
+        upward? (neg? (- y (cabin-current-y game)))]
+    (.moveTo physics cabin x y)
+    (swap! state assoc :cabin-current-move {:destination-y y :upward? upward?})))
+
+(defn stop-cabin
+  [game]
+  (let [cabin (get-in @state [:objects :cabin])]
+    (.setVelocityY cabin 0)
+    (swap! state dissoc :cabin-current-move)))
+
+(defn command-handler
+  [game [type params]]
+  (case type
+    :command/go-to-level
+    (go-to-level game (:level params))))
+
+(defn- process-cabin-commands
+  [game]
+  (doseq [command (elevator-cabin/get-commands (:cabin @state))]
+    (command-handler game command))
+  (swap! state update :cabin elevator-cabin/commands-processed))
+
+(defn- arrived-at-destination?
+  [{:keys [destination-y upward?] :as move} current-y]
+  (if upward? (<= current-y destination-y) (>= current-y destination-y)))
+
 (defn update-game [game]
+  (swap! state update :ticks inc)
+
   (doto
     (.. game -cameras -main)
-    (.setScroll 0 (swap! i inc))))
+    (.setScroll 0 (:ticks @state)))
+
+
+  (process-cabin-commands game)
+
+  (when-let [move (get-in @state [:cabin-current-move])]
+    (when (arrived-at-destination? move (cabin-current-y game))
+      (do (stop-cabin game)
+          (emit-cabin-command! [:command/cabin-arrived])))))
 
 (def config
   (clj->js
@@ -78,7 +139,8 @@
      :width   game-dimensions/screen-width
      :height  game-dimensions/screen-height
      :physics {:default "arcade"
-               :arcade  {:gravity {:y 200}}}
+               :arcade  {:gravity {:y 0}
+                         :debug   true}}
      :scene   {:preload #(this-as game (preload game))
                :create  #(this-as game (create game))
                :update  #(this-as game (update-game game))}}))

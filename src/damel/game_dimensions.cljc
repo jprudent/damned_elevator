@@ -15,21 +15,21 @@
 (def cabin-width 236)
 (def cabin-height 158)
 
-(def nb-levels 4)
+(def nb-levels 3)
 
 (def level-height 200)
 
 (def world-height (* nb-levels level-height))
 (def world-width 700)
 
+;; todo could be memoized
 (defn level
-  "return dimension and positions of things at given level assuming right-left
+  "return dimension and positions of static things at given level assuming top-left
   corner is 0 0."
   [level-number]
   {:pre [(< level-number nb-levels)]}
   (let [floor-y-min (- world-height (* level-number level-height))
         floor-y     (- floor-y-min floor-height)]
-    (prn floor-y)
     {:floor      {:x      0
                   :y      floor-y
                   :width  floor-width
@@ -48,6 +48,11 @@
    :y      (- world-height floor-height cabin-height)
    :width  cabin-width
    :height cabin-height})
+
+(defn cabin-at-level
+  "Coordinates of the cabin for given level (assuming anchor is 0 0)"
+  [level-number]
+  (assoc cabin :y (get-in (level level-number) [:elevator :y])))
 
 (def main-camera
   {:position {:x 0 :y 0 :width world-width :height screen-height}
