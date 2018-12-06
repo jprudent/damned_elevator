@@ -52,7 +52,8 @@
 (defn cabin-at-level
   "Coordinates of the cabin for given level (assuming anchor is 0 0)"
   [level-number]
-  (assoc cabin :y (get-in (level level-number) [:elevator :y])))
+  (assoc cabin :y (- (get-in (level level-number) [:floor :y])
+                     cabin-height)))
 
 (def main-camera
   {:position {:x 0 :y 0 :width world-width :height screen-height}
