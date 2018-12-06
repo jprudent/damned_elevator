@@ -41,3 +41,8 @@ user=> (damel.kobaian/make-sentence)
 ```
 clj -Atest-clj -R:clj
 ```
+
+## An experiment
+
+A work I write a lot of tests.
+Here I won't write ANY, FOR THE SAKE OF THE EXPERIENCE, EEEEEEEEEEEEEEEEEEEEEEEE.
