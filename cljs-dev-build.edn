@@ -1,1 +1,3 @@
-{:output-to     "prout/main.js"}
+{:output-to      "prout/main.js"
+ :optimizations  :none
+ :cache-analysis false}

@@ -1,6 +1,7 @@
 (ns damel.browser
   (:require [damel.game-dimensions :as game-dimensions]
-            [damel.elevator-cabin :as elevator-cabin]))
+            [damel.elevator-cabin :as elevator-cabin]
+            [damel.workers :as workers]))
 
 (enable-console-print!)
 
@@ -11,7 +12,8 @@
     (set! (.-crossOrigin loader) "anonymous")
     (doto loader
       (.image "elevator" "elevator2.png")
-      (.image "cabin" "elevator_cabin.png"))))
+      (.image "cabin" "elevator_cabin.png")
+      (.image "female0" "female0.png"))))
 
 (defn- text-at
   [game x y height text]
@@ -39,12 +41,18 @@
 
 (def state (atom {:ticks              0
                   :cabin              elevator-cabin/cabin-0
-                  :objects            {}
-                  :cabin-current-move nil}))
+                  :objects            {:cabin   nil
+                                       :workers {}}
+                  :cabin-current-move nil
+                  :workers            workers/workers-0}))
 
 (defn emit-cabin-command!
   [command]
   (swap! state update :cabin #(elevator-cabin/add-command % command)))
+
+(defn emit-worker-command!
+  [command]
+  (swap! state update :workers #(workers/add-command % command)))
 
 (defn init-cabin [game]
   (let [{:keys [x y]} game-dimensions/cabin
@@ -114,6 +122,27 @@
     (command-handler game command))
   (swap! state update :cabin elevator-cabin/commands-processed))
 
+(defn add-worker
+  [game {:keys [name current-level id] :as worker}]
+  (let [{:keys [x y]} (game-dimensions/worker-at-level current-level)
+        worker-sprite (-> (.. game -add)
+                          (.image 0 0 "female0")
+                          (.setName name)
+                          (.setOrigin 0 0)
+                          (.setPosition x y))]
+    (swap! state assoc-in [:objects :workers id] worker-sprite)))
+
+(defn worker-command-handler
+  [game [command-type :as command]]
+  (case command-type
+    :added-worker (add-worker game command)))
+
+(defn- process-workers-commands
+  [game]
+  (doseq [command (workers/get-commands (:workers @state))]
+    (worker-command-handler game command))
+  (swap! state update :workers workers/commands-processed))
+
 (defn- arrived-at-destination?
   [{:keys [destination-y upward?] :as move} current-y]
   (if upward? (<= current-y destination-y) (>= current-y destination-y)))
@@ -125,13 +154,14 @@
     (.. game -cameras -main)
     (.setScroll 0 (:ticks @state)))
 
-
   (process-cabin-commands game)
 
   (when-let [move (get-in @state [:cabin-current-move])]
     (when (arrived-at-destination? move (cabin-current-y game))
       (do (stop-cabin game)
-          (emit-cabin-command! [:command/cabin-arrived])))))
+          (emit-cabin-command! [:command/cabin-arrived]))))
+
+  (process-workers-commands game))
 
 (def config
   (clj->js
@@ -146,3 +176,9 @@
                :update  #(this-as game (update-game game))}}))
 
 (defonce game (js/Phaser.Game. config))
+
+(defn spawn-random-worker
+  []
+  (println "xouxou")
+  (emit-worker-command!
+    [:spawn (workers/->random-worker (:ticks @state) game-dimensions/nb-levels (constantly 42))]))

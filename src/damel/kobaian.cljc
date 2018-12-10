@@ -1,4 +1,5 @@
 (ns damel.kobaian
+  "Generate strings in an invented language"
   (:require #?(:cljs [cljs.spec.alpha :as s]
                :clj  [clojure.spec.alpha :as s])
             [clojure.string :as str]
@@ -32,3 +33,10 @@
   (-> (s/gen :kobaian/sentence)
       (gen/generate)
       (sentence->str)))
+
+(defn make-name
+  []
+  (-> (s/gen :kobaian/word)
+      (gen/generate)
+      (word->str)
+      (str/capitalize)))
