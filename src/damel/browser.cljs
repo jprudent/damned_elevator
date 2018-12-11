@@ -16,7 +16,7 @@
 ;; -- Game state
 ;; every sprite, game state is accessible from there
 
-(def state
+(defonce state
   (atom {:ticks                0
 
          ;; game state
@@ -118,7 +118,7 @@
 
 (defn make-worker
   "Make a worker"
-  [game {:keys [name current-level id] :as worker_}]
+  [game [_ {:keys [name current-level id] :as worker_}]]
   (let [{:keys [x y scale]} (game-dimensions/worker-at-level current-level)
         worker-sprite (-> (.. game -add)
                           (.image 0 0 "female0")
@@ -172,16 +172,27 @@
   [command]
   (swap! state update :workers #(workers/add-command % command)))
 
-
+(defn go-to-elevator
+  [game [_ {:keys [id] :as worker}]]
+  (-> (.. game -tweens)
+      (.add (clj->js {:targets (get-in @state [:objects :workers id])
+                      :x {:value 0
+                          :duration 50000}
+                      :angle {:value 5
+                              :yoyo true
+                              :duration 100
+                              :repeat -1}}))))
 
 (defn worker-command-handler
   [game [command-type :as command]]
   (case command-type
-    :added-worker (make-worker game command)))
+    :added-worker (make-worker game command)
+    :ordered-to-elevator (go-to-elevator game command)))
 
 (defn- process-workers-commands
   [game]
   (doseq [command (workers/get-commands (:workers @state))]
+    (println "processing worker command" (first command))
     (worker-command-handler game command))
   (swap! state update :workers workers/commands-processed))
 
@@ -219,7 +230,11 @@
 ;; some commands utilities
 ;; -----------------------
 
-(defn spawn-random-worker
-  []
-  (emit-worker-command!
-    [:spawn (workers/->random-worker (:ticks @state) game-dimensions/nb-levels (constantly 42))]))
+(defn- random-worker []
+  (workers/->random-worker (:ticks @state)
+                           game-dimensions/nb-levels
+                           (constantly 42)))
+
+(defn spawn-random-worker [] (emit-worker-command! [:spawn (random-worker)]))
+
+(defn enter-elevator [worker-id] (emit-worker-command! [:enter-elevator worker-id]))
