@@ -22,8 +22,12 @@
 (def world-height (* nb-levels level-height))
 (def world-width 700)
 
-(def worker-height 218)
-(def worker-width 148)
+
+(def worker-sprite-height 218)
+(def worker-sprite-width 148)
+(def worker-scale (/ 140 218))
+(def worker-height (* worker-sprite-height worker-scale))
+(def worker-width (* worker-sprite-width worker-scale))
 
 ;; todo could be memoized
 (defn level
@@ -64,13 +68,13 @@
   {:x (- world-width worker-width)
    :y (- (get-in (level level-number) [:floor :y]) worker-height)
    :height worker-height
-   :width worker-width})
+   :width worker-width
+   :scale worker-scale})
 
 (def main-camera
   {:position {:x 0 :y 0 :width world-width :height screen-height}
    :bounds   {:x 0 :y 0 :width world-width :height world-height}
    :zoom     1})
-
 
 (def mini-camera
   (let [width 100]
