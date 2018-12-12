@@ -17,30 +17,33 @@
 ;; every sprite, game state is accessible from there
 
 (defonce state
-  (atom {:ticks                0
+         (atom {:ticks                0
 
-         ;; game state
-         :cabin                elevator-cabin/cabin-0
-         :cabin-current-move   nil
-         :workers              workers/workers-0
-         :workers-current-move {}                           ;; id / move
+                ;; game state
+                :cabin                elevator-cabin/cabin-0
+                :cabin-current-move   nil
+                :workers              workers/workers-0
+                :workers-current-move {}                    ;; id / move
 
-         ;; contains only graphical objects
-         :objects              {:cabin   nil
-                                :workers {}}}))
+                ;; contains only graphical objects
+                :objects              {:cabin   nil
+                                       :workers {}}}))
 ;; -- cabin manipulation
 
-(defn cabin-current-y
-  "get cabin y coordinate"
+(defn cabin-coordinates
   [game]
-  (.. (get-in @state [:objects :cabin]) -y))
+  (let [cabin (get-in @state [:objects :cabin])]
+    {:x (.. cabin -x)
+     :y (.. cabin -y)
+     :width (.. cabin -displayWidth)}))
 
 (defn go-to-level
   [game level]
   (let [cabin   (get-in @state [:objects :cabin])
         physics (.. game -physics)
         {:keys [x y]} (game-dimensions/cabin-at-level level)
-        upward? (neg? (- y (cabin-current-y game)))]
+        {current-y :y} (cabin-coordinates game)
+        upward? (neg? (- y current-y))]
     (.moveTo physics cabin x y)
     (swap! state assoc :cabin-current-move {:destination-y y :upward? upward?})))
 
@@ -126,7 +129,7 @@
                           (.setScale scale)
                           (.setOrigin 0 0)
                           (.setPosition x y))]
-    (swap! state assoc-in [:objects :workers id] worker-sprite)))
+    (swap! state assoc-in [:objects :workers id :sprite] worker-sprite)))
 
 (defn make-main-camera
   [game]
@@ -164,6 +167,7 @@
 
   (make-mini-camera game))
 
+
 (defn emit-cabin-command!
   [command]
   (swap! state update :cabin #(elevator-cabin/add-command % command)))
@@ -174,14 +178,21 @@
 
 (defn go-to-elevator
   [game [_ {:keys [id] :as worker}]]
-  (-> (.. game -tweens)
-      (.add (clj->js {:targets (get-in @state [:objects :workers id])
-                      :x {:value 0
-                          :duration 50000}
-                      :angle {:value 5
-                              :yoyo true
-                              :duration 100
-                              :repeat -1}}))))
+  (let [{cab-x :x cab-width :width} (cabin-coordinates game)
+        destination-x (+ cab-x (/ cab-width 2))
+        worker-sprite (get-in @state [:objects :workers id :sprite])
+        worker-tween  (-> (.. game -tweens)
+                          (.add (clj->js {:targets worker-sprite
+                                          :x       {:value    destination-x
+                                                    :duration (* 30000 (rand))}
+                                          :angle   {:value    5
+                                                    :yoyo     true
+                                                    :duration 100
+                                                    :repeat   -1}})))]
+    (swap! state update-in [:objects :workers id]
+           merge {:tween        worker-tween
+                  :current-move {:destination-x destination-x
+                                 :to-left?      (pos? (- (.. worker-sprite -x) destination-x))}})))
 
 (defn worker-command-handler
   [game [command-type :as command]]
@@ -196,9 +207,15 @@
     (worker-command-handler game command))
   (swap! state update :workers workers/commands-processed))
 
-(defn- arrived-at-destination?
+(defn- arrived? [lte? x1 x2] (if lte? (<= x1 x2) (>= x1 x2)))
+
+(defn- arrived-at-destination-y?
   [{:keys [destination-y upward?] :as move} current-y]
-  (if upward? (<= current-y destination-y) (>= current-y destination-y)))
+  (arrived? upward? current-y destination-y))
+
+(defn- arrived-at-destination-x?
+  [{:keys [destination-x to-left?] :as move} current-x]
+  (arrived? to-left? current-x destination-x))
 
 (defn update-game [game]
   (swap! state update :ticks inc)
@@ -206,11 +223,16 @@
   (process-cabin-commands game)
 
   (when-let [move (get-in @state [:cabin-current-move])]
-    (when (arrived-at-destination? move (cabin-current-y game))
+    (when (arrived-at-destination-y? move (:y (cabin-coordinates game)))
       (do (stop-cabin game)
           (emit-cabin-command! [:command/cabin-arrived]))))
 
-  (process-workers-commands game))
+  (process-workers-commands game)
+
+  (doseq [[id {:keys [sprite current-move tween]}] (get-in @state [:objects :workers])]
+    (when (and current-move (arrived-at-destination-x? current-move (.. sprite -x) ))
+      (do (.stop tween)
+          (swap! state update-in [:objects :workers id] dissoc :tween :current-move)))))
 
 (def config
   (clj->js
@@ -238,3 +260,7 @@
 (defn spawn-random-worker [] (emit-worker-command! [:spawn (random-worker)]))
 
 (defn enter-elevator [worker-id] (emit-worker-command! [:enter-elevator worker-id]))
+
+(dotimes [x 22]
+  (spawn-random-worker)
+  (enter-elevator (dec x)))
