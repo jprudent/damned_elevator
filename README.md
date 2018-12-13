@@ -1,7 +1,7 @@
 # damned_elevator
 I don't really know what this will be yet
 
-![Screenshot](visual-log/2018-12-13.png?raw=true "Screenshot")
+![Screenshot](visual-log/2018-12-14.png?raw=true "Screenshot")
 
 ## Run
 

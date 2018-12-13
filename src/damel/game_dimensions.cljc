@@ -54,7 +54,8 @@
   {:x      0
    :y      (- world-height floor-height cabin-height)
    :width  cabin-width
-   :height cabin-height})
+   :height cabin-height
+   :x-center (/ 2 cabin-width)})
 
 (defn cabin-at-level
   "Coordinates of the cabin for given level (assuming anchor is 0 0)"

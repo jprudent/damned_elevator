@@ -1,4 +1,4 @@
-(ns damel.elevator-cabin)
+(ns damel.model.elevator-cabin)
 
 (def cabin-0 {:current-level 0
               :heading-level 0

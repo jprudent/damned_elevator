@@ -1,86 +1,57 @@
 (ns damel.workers
-  (:require [damel.kobaian :as kobaian]
-            [clojure.spec.gen.alpha :as gen]
-            [clojure.spec.alpha :as s]))
+  (:require [damel.state :as state]
+            [damel.game-objects-factory :as gof]
+            [damel.game-dimensions :as game-dimensions]
+            [damel.kinetic :as kinetic]
+            [damel.phaser-utils :as phutils]))
 
-(def workers-0
-  {:workers  {}
-   :commands []
-   :errors   []})
+(defn spawn-worker
+  [state game [_ {:keys [id] :as worker}]]
+  (state/set-worker-sprite state id (gof/make-worker game worker)))
 
-(defonce max-id (atom 0))
-(defn next-id [] (swap! max-id inc))
+(defrecord WorkerMove [destination-x to-left?])
 
-(defrecord Worker [id
-                   name
-                   sex
-                   age
-                   laziness
-                   fidelity
-                   anxiety
-                   arrival-time
-                   expected-time
-                   current-level
-                   destination-level
-                   in-elevator?])
+(defn go-to-elevator
+  [state game [_ {:keys [id] :as worker}]]
+  (let [destination-x (:x-center game-dimensions/cabin)
+        worker-sprite (state/get-worker-sprite state id)
+        worker-tween  (gof/make-walking-worker-tween game worker-sprite destination-x)
+        worker-move   (->WorkerMove destination-x (pos? (- (.. worker-sprite -x) destination-x)))]
+    (-> state
+        (state/set-worker-move id worker-move)
+        (state/set-worker-tween id worker-tween))))
 
-(defn ->random-worker
-  [current-tick nb-level best-trip-time]
-  (let [destination-level (rand-int nb-level)
-        best-trip-time    (best-trip-time destination-level)]
-    (map->Worker {:id                (next-id)
-                  :name              (kobaian/make-name)
-                  :sex               (gen/generate (s/gen #{:male :female}))
-                  :age               (+ 18 (rand-int 70))
-                  :laziness          (rand 1)
-                  :fidelity          (rand 1)
-                  :anxiety           (rand 1)
-                  :arrival-time      current-tick
-                  :expected-time     (int (+ current-tick best-trip-time (* best-trip-time (rand 1))))
-                  :current-level     0
-                  :destination-level destination-level
-                  :state             :idle})))
-
-(defn get-commands [workers] (:commands workers))
-
-
-(defn emit [workers command]
-  (update workers :commands conj command))
-
-(defn emit-error [workers command reason]
-  (update workers :errors conj {:command command
-                                :workers workers
-                                :reason  reason}))
-
-(defn spawn
-  [workers [_ {:keys [id] :as worker}]]
-  (-> workers
-      (assoc-in [:workers id] worker)
-      (emit [:added-worker worker])))
-
-(defn unique
-  [[x & others]]
-  (when (not (seq others)) x))
-
-(defn find-worker-by-id
-  [workers worker-id]
-  (get-in workers [:workers worker-id]))
-
-(defn enter-elevator
-  [workers [_ worker-id :as command]]
-  (if-let [worker (find-worker-by-id workers worker-id)]
-    (-> workers
-        (update-in [:workers worker-id :state] :entering-elevator)
-        (emit [:ordered-to-elevator worker]))
-    (emit-error workers command (str "worker id " worker-id " not found"))))
-
-(defn add-command
-  [workers [command-type :as command]]
-  (println "Received" command-type)
+(defn worker-command-handler
+  [state game [command-type :as command]]
   (case command-type
-    :spawn (spawn workers command)
-    :enter-elevator (enter-elevator workers command)))
+    :added-worker (spawn-worker state game command)
+    :ordered-to-elevator (go-to-elevator state game command)))
 
-(defn commands-processed
-  [workers]
-  (update workers :commands empty))
+(defn- play-commands [state game]
+  (reduce
+    (fn [state command] (worker-command-handler state game command))
+    state
+    (state/get-workers-commands state)))
+
+(defn process-commands
+  [state game]
+  (-> state
+      (play-commands game)
+      (state/wipe-workers-commands)))
+
+(defn control-worker-move
+  [state worker-id]
+  (let [move   (state/get-worker-move state worker-id)
+        sprite (state/get-worker-sprite state worker-id)
+        tween  (state/get-worker-tween state worker-id)]
+    (if (and move (kinetic/arrived-at-destination-x? move (phutils/get-obj-coors sprite)))
+      (do (.stop tween)
+          (state/worker-dont-move state worker-id))
+      state)))
+
+(defn control-move
+  [state game]
+  (reduce
+    (fn [state worker-id] (control-worker-move state worker-id))
+    state
+    (map :id (state/get-workers state))))

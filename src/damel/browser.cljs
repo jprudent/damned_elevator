@@ -1,238 +1,22 @@
 (ns damel.browser
   (:require [damel.game-dimensions :as game-dimensions]
-            [damel.elevator-cabin :as elevator-cabin]
-            [damel.workers :as workers]))
+            [damel.model.workers :as workers]
+            [damel.state :as state]
+            [damel.cabin :as cabin]
+            [damel.workers :as gworkers]
+            [damel.game-objects-factory :as gof]))
 
 (enable-console-print!)
 
-;; -- Phaser utilities
-(defn- text-at
-  "Print text (useful for debug)"
-  [game x y height text]
-  (-> (.. game -add)
-      (.text x y text
-             #js {:fontSize (str height "px") :fill "#0F0"})))
+(defn update-game [state game]
+  (-> state
+      (update :ticks inc)
+      (cabin/process-commands game)
+      (cabin/control-move game)
+      (gworkers/process-commands game)
+      (gworkers/control-move game)))
 
-;; -- Game state
-;; every sprite, game state is accessible from there
-
-(defonce state
-         (atom {:ticks                0
-
-                ;; game state
-                :cabin                elevator-cabin/cabin-0
-                :cabin-current-move   nil
-                :workers              workers/workers-0
-                :workers-current-move {}                    ;; id / move
-
-                ;; contains only graphical objects
-                :objects              {:cabin   nil
-                                       :workers {}}}))
-;; -- cabin manipulation
-
-(defn cabin-coordinates
-  [game]
-  (let [cabin (get-in @state [:objects :cabin])]
-    {:x (.. cabin -x)
-     :y (.. cabin -y)
-     :width (.. cabin -displayWidth)}))
-
-(defn go-to-level
-  [game level]
-  (let [cabin   (get-in @state [:objects :cabin])
-        physics (.. game -physics)
-        {:keys [x y]} (game-dimensions/cabin-at-level level)
-        {current-y :y} (cabin-coordinates game)
-        upward? (neg? (- y current-y))]
-    (.moveTo physics cabin x y)
-    (swap! state assoc :cabin-current-move {:destination-y y :upward? upward?})))
-
-(defn stop-cabin
-  [game]
-  (let [cabin (get-in @state [:objects :cabin])]
-    (.setVelocityY cabin 0)
-    (swap! state dissoc :cabin-current-move)))
-
-;; -- cabin commands handling
-
-(defn command-handler
-  [game [type params]]
-  (case type
-    :command/go-to-level
-    (go-to-level game (:level params))))
-
-(defn- process-cabin-commands
-  "Read and execute the cabin commands"
-  [game]
-  (doseq [command (elevator-cabin/get-commands (:cabin @state))]
-    (command-handler game command))
-  (swap! state update :cabin elevator-cabin/commands-processed))
-
-;; -- Preload
-
-(defn preload
-  "Preload all assets for the game"
-  [game]
-  (println "preload")
-  (let [loader (.-load game)]
-    (set! (.-baseURL loader) "http://localhost:9000/resources/img/")
-    (set! (.-crossOrigin loader) "anonymous")
-    (doto loader
-      (.image "elevator" "elevator2.png")
-      (.image "cabin" "elevator_cabin.png")
-      (.image "female0" "female0.png"))))
-
-;; -- Make graphical objects
-
-(defn make-level
-  "Make level i"
-  [game i]
-  (let [{:keys [floor elevator level-text]} (game-dimensions/level i)]
-
-    (let [{:keys [x y]} elevator]
-      (-> (.. game -add)
-          (.image 0 0 "elevator")
-          (.setOrigin 0 0)
-          (.setPosition x y)))
-
-    (let [{:keys [x y height width]} floor]
-      (-> (.. game -add)
-          (.graphics)
-          (.fillStyle 0xFF00FF)
-          (.fillRect x y width height)))
-
-    (let [{:keys [x y height]} level-text]
-      (text-at game x y height (str "Level " i)))))
-
-(defn make-cabin
-  "Make the elevator cabin"
-  [game]
-  (let [{:keys [x y]} game-dimensions/cabin
-        {:keys [mass]} elevator-cabin/cabin-0
-        cabin (-> (.. game -physics -add)
-                  (.image 0 0 "cabin")
-                  (.setName "cabin")
-                  (.setOrigin 0 0)
-                  (.setPosition x y))]
-    (-> (.. cabin -body)
-        (.setMass mass)
-        (.setVelocity 0 0))
-    (swap! state assoc-in [:objects :cabin] cabin)))
-
-(defn make-worker
-  "Make a worker"
-  [game [_ {:keys [name current-level id] :as worker_}]]
-  (let [{:keys [x y scale]} (game-dimensions/worker-at-level current-level)
-        worker-sprite (-> (.. game -add)
-                          (.image 0 0 "female0")
-                          (.setName name)
-                          (.setScale scale)
-                          (.setOrigin 0 0)
-                          (.setPosition x y))]
-    (swap! state assoc-in [:objects :workers id :sprite] worker-sprite)))
-
-(defn make-main-camera
-  [game]
-  (let [{:keys [bounds zoom]} game-dimensions/main-camera]
-    (->
-      (.. game -cameras -main)
-      (.setBounds (:x bounds) (:y bounds) (:width bounds) (:height bounds))
-      (.setZoom zoom)
-      (.setName "main"))))
-
-(defn make-mini-camera
-  "Make the building camera on the right side"
-  [game]
-  (let [{:keys [position bounds zoom]} game-dimensions/mini-camera]
-    (->
-      (.. game -cameras)
-      (.add (:x position) (:y position) (:width position) (:height position))
-      (.setBackgroundColor 0x222222)
-      (.setBounds (:x bounds) (:y bounds) (:width bounds) (:heigh bounds))
-      (.setZoom zoom)
-      (.setName "mini")
-      (.setScroll 0 0))))
-
-(defn create
-  "Initialisation of the game"
-  [game]
-  (println "create" (js/Object.keys game))
-
-  (dotimes [level-number game-dimensions/nb-levels]
-    (make-level game level-number))
-
-  (make-cabin game)
-
-  (make-main-camera game)
-
-  (make-mini-camera game))
-
-
-(defn emit-cabin-command!
-  [command]
-  (swap! state update :cabin #(elevator-cabin/add-command % command)))
-
-(defn emit-worker-command!
-  [command]
-  (swap! state update :workers #(workers/add-command % command)))
-
-(defn go-to-elevator
-  [game [_ {:keys [id] :as worker}]]
-  (let [{cab-x :x cab-width :width} (cabin-coordinates game)
-        destination-x (+ cab-x (/ cab-width 2))
-        worker-sprite (get-in @state [:objects :workers id :sprite])
-        worker-tween  (-> (.. game -tweens)
-                          (.add (clj->js {:targets worker-sprite
-                                          :x       {:value    destination-x
-                                                    :duration (* 30000 (rand))}
-                                          :angle   {:value    5
-                                                    :yoyo     true
-                                                    :duration 100
-                                                    :repeat   -1}})))]
-    (swap! state update-in [:objects :workers id]
-           merge {:tween        worker-tween
-                  :current-move {:destination-x destination-x
-                                 :to-left?      (pos? (- (.. worker-sprite -x) destination-x))}})))
-
-(defn worker-command-handler
-  [game [command-type :as command]]
-  (case command-type
-    :added-worker (make-worker game command)
-    :ordered-to-elevator (go-to-elevator game command)))
-
-(defn- process-workers-commands
-  [game]
-  (doseq [command (workers/get-commands (:workers @state))]
-    (println "processing worker command" (first command))
-    (worker-command-handler game command))
-  (swap! state update :workers workers/commands-processed))
-
-(defn- arrived? [lte? x1 x2] (if lte? (<= x1 x2) (>= x1 x2)))
-
-(defn- arrived-at-destination-y?
-  [{:keys [destination-y upward?] :as move} current-y]
-  (arrived? upward? current-y destination-y))
-
-(defn- arrived-at-destination-x?
-  [{:keys [destination-x to-left?] :as move} current-x]
-  (arrived? to-left? current-x destination-x))
-
-(defn update-game [game]
-  (swap! state update :ticks inc)
-
-  (process-cabin-commands game)
-
-  (when-let [move (get-in @state [:cabin-current-move])]
-    (when (arrived-at-destination-y? move (:y (cabin-coordinates game)))
-      (do (stop-cabin game)
-          (emit-cabin-command! [:command/cabin-arrived]))))
-
-  (process-workers-commands game)
-
-  (doseq [[id {:keys [sprite current-move tween]}] (get-in @state [:objects :workers])]
-    (when (and current-move (arrived-at-destination-x? current-move (.. sprite -x) ))
-      (do (.stop tween)
-          (swap! state update-in [:objects :workers id] dissoc :tween :current-move)))))
+(defonce state (atom state/state-0))
 
 (def config
   (clj->js
@@ -243,13 +27,14 @@
      :physics  {:default "arcade"
                 :arcade  {:gravity {:y 0}
                           :debug   true}}
-     :scene    {:preload #(this-as game (preload game))
-                :create  #(this-as game (create game))
-                :update  #(this-as game (update-game game))}}))
+     :scene    {:preload #(this-as game (gof/preload-assets game))
+                :create  #(this-as game (swap! state gof/create-building game))
+                :update  #(this-as game (swap! state update-game game))}}))
 
 (defonce game (js/Phaser.Game. config))
 
 ;; some commands utilities
+;; for interacting with the game
 ;; -----------------------
 
 (defn- random-worker []
@@ -257,10 +42,6 @@
                            game-dimensions/nb-levels
                            (constantly 42)))
 
-(defn spawn-random-worker [] (emit-worker-command! [:spawn (random-worker)]))
+(defn spawn-random-worker [] (swap! state state/emit-worker-command [:spawn (random-worker)]))
 
-(defn enter-elevator [worker-id] (emit-worker-command! [:enter-elevator worker-id]))
-
-(dotimes [x 22]
-  (spawn-random-worker)
-  (enter-elevator (dec x)))
+(defn enter-elevator [worker-id] (swap! state state/emit-worker-command [:enter-elevator worker-id]))
